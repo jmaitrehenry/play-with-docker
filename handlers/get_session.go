@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -19,6 +20,13 @@ func GetSession(rw http.ResponseWriter, req *http.Request) {
 	if session == nil {
 		rw.WriteHeader(http.StatusNotFound)
 		return
+	}
+
+	for _, instance := range session.Instances {
+		if instance.ExecId != "" && !instance.IsConnected() {
+			fmt.Println("RE ATTACHING")
+			go instance.Attach()
+		}
 	}
 
 	json.NewEncoder(rw).Encode(session)

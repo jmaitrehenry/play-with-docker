@@ -20,6 +20,11 @@ type Instance struct {
 	Ctx     context.Context         `json:"-"`
 }
 
+func (i *Instance) IsConnected() bool {
+	return i.Conn != nil
+
+}
+
 var dindImage string
 var defaultDindImageName string
 
@@ -77,7 +82,11 @@ func (i *Instance) Exec() {
 		return
 	}
 	i.ExecId = id
-	conn, err := AttachExecConnection(id, i.Ctx)
+	i.Attach()
+}
+
+func (i *Instance) Attach() {
+	conn, err := AttachExecConnection(i.ExecId, i.Ctx)
 	if err != nil {
 		return
 	}
@@ -94,7 +103,6 @@ func (i *Instance) Exec() {
 	case <-i.Ctx.Done():
 	}
 }
-
 func GetInstance(session *Session, name string) *Instance {
 	//TODO: Use redis
 	return session.Instances[name]
