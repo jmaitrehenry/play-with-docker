@@ -21,6 +21,9 @@ just run `docker swarm init`.
 It's also necessary to manually load the IPVS kernel module because as swarms are created in `dind`, 
 the daemon won't load it automatically. Run the following command for that purpose: `sudo lsmod xt_ipvs`
 
+Notes:
+* Docker for Mac not include docker 1.13 for now, you can build a new Docker environment with Docker Machine
+
 
 ## Installation
 
@@ -35,6 +38,11 @@ Start the Docker daemon on your machine and run `docker pull docker:1.12.2-rc2-d
 4) Run the binary produced as `play-with-docker`
 
 5) Point to http://localhost:3000/ and click "New Instance"
+
+You can build and run the project with docker:
+1) `./build.sh`
+
+2) `docker run -v /var/run/docker.sock:/var/run/docker.sock --name  -p3000:3000 -d franela/play-with-docker:latest`
 
 Notes:
 
