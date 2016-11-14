@@ -1,8 +1,11 @@
 package services
 
 import (
+	"encoding/gob"
+	"fmt"
 	"log"
 	"math"
+	"os"
 	"sync"
 	"time"
 
@@ -13,10 +16,18 @@ import (
 var wsServer *socketio.Server
 
 type Session struct {
-	sync.Mutex
+	rw        sync.Mutex
 	Id        string               `json:"id"`
 	Instances map[string]*Instance `json:"instances"`
 	Clients   []*Client            `json:"-"`
+}
+
+func (s *Session) Lock() {
+	s.rw.Lock()
+}
+
+func (s *Session) Unlock() {
+	s.rw.Unlock()
 }
 
 func (s *Session) GetSmallestViewPort() ViewPort {
@@ -51,12 +62,12 @@ func CreateWSServer() *socketio.Server {
 }
 
 func CloseSession(s *Session) error {
-	s.Lock()
-	defer s.Unlock()
+	s.rw.Lock()
+	defer s.rw.Unlock()
 	wsServer.BroadcastTo(s.Id, "session end")
 	log.Printf("Starting clean up of session [%s]\n", s.Id)
 	for _, i := range s.Instances {
-		i.Conn.Close()
+		i.conn.Close()
 		if err := DeleteContainer(i.Name); err != nil {
 			log.Println(err)
 			return err
@@ -88,10 +99,40 @@ func NewSession() (*Session, error) {
 		log.Println("ERROR NETWORKING")
 		return nil, err
 	}
-
 	return s, nil
 }
 
 func GetSession(sessionId string) *Session {
-	return sessions[sessionId]
+	s := sessions[sessionId]
+	if s != nil {
+		for _, instance := range s.Instances {
+			if instance.ExecId != "" && !instance.IsConnected() {
+				fmt.Println("Re attaching")
+				instance.SetSession(s)
+				go instance.Attach()
+			}
+		}
+
+	}
+	return s
+}
+
+func LoadSessionsFromDisk() error {
+	file, err := os.Open("./sessions.gob")
+	if err == nil {
+		decoder := gob.NewDecoder(file)
+		err = decoder.Decode(&sessions)
+	}
+	file.Close()
+	return err
+}
+
+func saveSessionsToDisk() error {
+	file, err := os.Create("./sessions.gob")
+	if err == nil {
+		encoder := gob.NewEncoder(file)
+		err = encoder.Encode(&sessions)
+	}
+	file.Close()
+	return err
 }

@@ -2,27 +2,35 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"sync"
 
 	"golang.org/x/text/encoding"
 
 	"github.com/docker/docker/api/types"
 )
 
+var rw sync.Mutex
+
 type Instance struct {
-	Session *Session                `json:"-"`
+	session *Session                `json:"-"`
 	Name    string                  `json:"name"`
 	IP      string                  `json:"ip"`
-	Conn    *types.HijackedResponse `json:"-"`
+	conn    *types.HijackedResponse `json:"-"`
 	ExecId  string                  `json:"-"`
-	Ctx     context.Context         `json:"-"`
+	ctx     context.Context         `json:"-"`
 }
 
 func (i *Instance) IsConnected() bool {
-	return i.Conn != nil
+	return i.conn != nil
 
+}
+
+func (i *Instance) SetSession(s *Session) {
+	i.session = s
 }
 
 var dindImage string
@@ -47,7 +55,7 @@ func NewInstance(session *Session) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	instance.Session = session
+	instance.session = session
 
 	if session.Instances == nil {
 		session.Instances = make(map[string]*Instance)
@@ -66,32 +74,45 @@ type sessionWriter struct {
 }
 
 func (s *sessionWriter) Write(p []byte) (n int, err error) {
-	wsServer.BroadcastTo(s.instance.Session.Id, "terminal out", s.instance.Name, string(p))
+	wsServer.BroadcastTo(s.instance.session.Id, "terminal out", s.instance.Name, string(p))
 	return len(p), nil
 }
 
 func (i *Instance) ResizeTerminal(cols, rows uint) error {
-	return ResizeExecConnection(i.ExecId, i.Ctx, cols, rows)
+	return ResizeExecConnection(i.ExecId, i.ctx, cols, rows)
 }
 
 func (i *Instance) Exec() {
-	i.Ctx = context.Background()
+	i.ctx = context.Background()
 
-	id, err := CreateExecConnection(i.Name, i.Ctx)
+	id, err := CreateExecConnection(i.Name, i.ctx)
 	if err != nil {
 		return
 	}
 	i.ExecId = id
+
+	rw.Lock()
+	err = saveSessionsToDisk()
+	rw.Unlock()
+
+	if err != nil {
+		fmt.Println("Error saving session to disk ", err)
+	}
+
 	i.Attach()
 }
 
 func (i *Instance) Attach() {
-	conn, err := AttachExecConnection(i.ExecId, i.Ctx)
+	if i.ctx == nil {
+		i.ctx = context.Background()
+	}
+	conn, err := AttachExecConnection(i.ExecId, i.ctx)
+	fmt.Println(err)
 	if err != nil {
 		return
 	}
 
-	i.Conn = conn
+	i.conn = conn
 
 	go func() {
 		encoder := encoding.Replacement.NewEncoder()
@@ -100,7 +121,7 @@ func (i *Instance) Attach() {
 	}()
 
 	select {
-	case <-i.Ctx.Done():
+	case <-i.ctx.Done():
 	}
 }
 func GetInstance(session *Session, name string) *Instance {

@@ -12,7 +12,7 @@ type ViewPort struct {
 }
 
 type Client struct {
-	SO       socketio.Socket
+	so       socketio.Socket
 	ViewPort ViewPort
 }
 
@@ -24,7 +24,7 @@ func (c *Client) ResizeViewPort(cols, rows uint) {
 func NewClient(so socketio.Socket, session *Session) *Client {
 	so.Join(session.Id)
 
-	c := &Client{SO: so}
+	c := &Client{so: so}
 
 	so.On("session close", func() {
 		CloseSession(session)
@@ -34,7 +34,7 @@ func NewClient(so socketio.Socket, session *Session) *Client {
 		// User wrote something on the terminal. Need to write it to the instance terminal
 		instance := GetInstance(session, name)
 		if instance != nil && len(data) > 0 {
-			instance.Conn.Conn.Write([]byte(data))
+			instance.conn.Conn.Write([]byte(data))
 		}
 	})
 
@@ -54,7 +54,7 @@ func NewClient(so socketio.Socket, session *Session) *Client {
 	so.On("disconnection", func() {
 		// Client has disconnected. Remove from session and recheck terminal sizes.
 		for i, cl := range session.Clients {
-			if cl.SO.Id() == c.SO.Id() {
+			if cl.so != nil && cl.so.Id() == c.so.Id() {
 				session.Clients = append(session.Clients[:i], session.Clients[i+1:]...)
 				break
 			}
